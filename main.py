@@ -56,16 +56,19 @@ from google.genai import types
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("copyvisor")
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 if not GEMINI_API_KEY:
-    # 서버 기동 자체는 막지 않되, 강하게 경고. (운영 환경에서는 raise 처리 권장)
     logger.warning(
         "[WARNING] 환경변수 GEMINI_API_KEY가 설정되지 않았습니다. "
         "export GEMINI_API_KEY='...' 로 설정 후 서버를 재기동하세요."
     )
 
-# google-genai 공식 클라이언트 초기화
-client = genai.Client(api_key=GEMINI_API_KEY)
+# google-genai 공식 클라이언트 초기화 (키가 없으면 None으로 초기화)
+try:
+    client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+except Exception as e:
+    logger.warning(f"[WARNING] Gemini 클라이언트 초기화 실패: {e}")
+    client = None
 
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
 
