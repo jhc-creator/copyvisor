@@ -37,6 +37,7 @@ Copyvisor Description AI - Backend (main.py)
 """
 
 import os
+import time
 import json
 import logging
 from typing import Optional
@@ -82,8 +83,8 @@ app = FastAPI(
 # TODO: 운영 배포 시 allow_origins를 실제 프론트엔드 도메인으로 제한할 것
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영 환경에서는 ["https://your-frontend-domain.com"] 등으로 제한
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -526,7 +527,7 @@ def call_gemini_for_ad_copy(
     system_prompt = build_system_prompt(brand_name, brand_raw_spec)
 
     try:
-        response = client.models.generate_content(
+        response = gemini_call_with_retry(lambda: client.models.generate_content(
             model=GEMINI_MODEL_NAME,
             contents=[
                 # 이미지 파트: 업로드된 바이트를 그대로 inline으로 전달
@@ -539,15 +540,10 @@ def call_gemini_for_ad_copy(
                 response_mime_type="application/json",
                 # 브랜드 어미/형태소 규칙을 엄격히 지키되, 디스크립션 표현의 다양성은 확보
                 temperature=0.85,
-                # -------------------------------------------------------------
-                # [선택 고도화] response_json_schema를 추가하면 SDK 차원에서
-                # 스키마 강제(Structured Output)가 가능합니다. 현재는 프롬프트
-                # 기반 JSON 지시 + 후처리 파싱 방식으로 우선 구현했습니다.
-                # 단, 브랜드별 글자 수/줄바꿈 규칙은 자유 텍스트 검증 영역이라
-                # JSON Schema만으로는 강제하기 어려워 프롬프트 규칙이 핵심입니다.
-                # -------------------------------------------------------------
             ),
-        )
+        ))
+    except HTTPException:
+        raise  # gemini_call_with_retry가 변환한 HTTPException은 그대로 올림
     except Exception as e:
         logger.exception("[GEMINI API ERROR]")
         raise HTTPException(
@@ -577,6 +573,54 @@ def count_chars(text: str) -> int:
     """
     return len(text) if text else 0
 
+
+# ------------------------------------------------------------------------------
+# 5-2. Gemini 503 자동 재시도 유틸
+# ------------------------------------------------------------------------------
+
+def is_503_error(e: Exception) -> bool:
+    """
+    Gemini SDK가 던지는 예외 중 503 UNAVAILABLE(일시적 과부하)인지 판별한다.
+    - google.genai.errors.ServerError / google.api_core.exceptions.ServiceUnavailable
+    - 혹은 에러 메시지에 '503' 또는 'UNAVAILABLE'이 포함된 경우
+    """
+    msg = str(e).upper()
+    return "503" in msg or "UNAVAILABLE" in msg or "HIGH DEMAND" in msg
+
+
+def gemini_call_with_retry(call_fn, max_retries: int = 3, base_delay: float = 2.0):
+    """
+    Gemini API 호출 함수(call_fn)를 실행하고,
+    503 UNAVAILABLE이 발생하면 지수 백오프(2s → 4s → 8s)로 최대 max_retries회 재시도한다.
+    다른 에러는 재시도 없이 즉시 re-raise한다.
+
+    사용 예:
+        response = gemini_call_with_retry(lambda: client.models.generate_content(...))
+    """
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return call_fn()
+        except Exception as e:
+            if is_503_error(e):
+                last_exc = e
+                wait = base_delay * (2 ** (attempt - 1))  # 2s, 4s, 8s
+                logger.warning(
+                    f"[GEMINI 503] attempt={attempt}/{max_retries}, "
+                    f"{wait:.0f}초 대기 후 재시도합니다. 에러: {e}"
+                )
+                time.sleep(wait)
+            else:
+                raise  # 503 외 에러는 재시도 없이 즉시 올림
+    # max_retries번 모두 503이면 마지막 예외를 HTTPException으로 변환
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"Gemini 서버가 일시적으로 과부하 상태입니다. "
+            f"{max_retries}회 재시도 후에도 응답을 받지 못했습니다. "
+            f"잠시 후 다시 시도해 주세요. (원인: {last_exc})"
+        ),
+    )
 
 def build_refine_prompt(brand_name: str, brand_raw_spec: str, original_copy: str, direction: str) -> str:
     """
@@ -689,16 +733,19 @@ def call_gemini_for_refine(brand_name: str, brand_raw_spec: str, original_copy: 
 
         prompt = build_refine_prompt(brand_name, brand_raw_spec, original_copy, direction) + emphasis
 
+        temperature = max(0.3, 0.7 - (attempt - 1) * 0.2)
         try:
-            response = client.models.generate_content(
+            response = gemini_call_with_retry(lambda: client.models.generate_content(
                 model=GEMINI_MODEL_NAME,
                 contents=[prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     # 재시도할수록 온도를 살짝 낮춰 지시 순응도를 높인다.
-                    temperature=max(0.3, 0.7 - (attempt - 1) * 0.2),
+                    temperature=temperature,
                 ),
-            )
+            ))
+        except HTTPException:
+            raise  # gemini_call_with_retry가 변환한 HTTPException은 그대로 올림
         except Exception as e:
             logger.exception("[GEMINI API ERROR - refine]")
             raise HTTPException(
