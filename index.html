@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Copyvisor Description AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ---- Design tokens (Light / Indigo-Blue) ---- */
+    --bg-void: #eef0f7;          /* 페이지 배경 */
+    --bg-deep: #ffffff;          /* 패널(쉘) 배경 */
+    --bg-panel: #f7f8fc;         /* 카드/버블 배경 */
+    --bg-panel-raised: #ffffff;  /* 강조 카드 */
+    --line: #e4e6f0;
+    --line-strong: #c7cbe8;
+
+    --purple-500: #4f46e5;
+    --purple-400: #6366f1;
+    --violet-glow: #4338ca;
+    --blue-accent: #3d4fe0;
+
+    --text-primary: #1c1f33;
+    --text-secondary: #6b6f8a;
+    --text-faint: #9498b0;
+
+    --grad-brand: linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%);
+    --grad-bot-bubble: #f3f4fb;
+
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+
+    --font-display: 'Manrope', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    height: 100%;
+    margin: 0;
+    background: var(--bg-void);
+    font-family: var(--font-display);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    background: var(--bg-void);
+    gap: 20px;
+  }
+
+  /* 챗봇 + 사이드 패널을 감싸는 레이아웃 컨테이너.
+     처음엔 챗봇 하나만 중앙에 떠 있다가, 첫 디스크립션이 생성되면
+     .has-panel 클래스가 붙으면서 사이드 패널이 오른쪽에서 슬라이드 인된다. */
+  .app-layout{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    width: 100%;
+  }
+
+  /* ============== Chat Shell ============== */
+  .chat-shell{
+    width: 100%;
+    max-width: 460px;
+    flex-shrink: 0;
+    height: 86vh;
+    max-height: 820px;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow:
+      0 30px 70px -25px rgba(60, 70, 150, 0.25),
+      0 0 0 1px rgba(0,0,0,0.02) inset;
+    position: relative;
+  }
+
+  /* ---- Header ---- */
+  .chat-header{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(79, 70, 229, 0.05), transparent);
+    flex-shrink: 0;
+  }
+  .brand-mark{
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: var(--grad-brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 18px -4px rgba(79, 70, 229, 0.35);
+  }
+  .brand-mark svg{ width: 20px; height: 20px; }
+  .header-text{ display: flex; flex-direction: column; line-height: 1.25; }
+  .header-text .name{ font-weight: 700; font-size: 14px; letter-spacing: -0.01em; white-space: nowrap; }
+  .header-text .status{
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status .dot{
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade8090;
+  }
+  .header-spacer{ flex: 1; }
+  .header-icon-btn{
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--text-faint);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .header-icon-btn:hover{ color: var(--text-primary); border-color: var(--line-strong); }
+
+  /* ---- Messages area ---- */
+  .chat-body{
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .chat-body::-webkit-scrollbar{ width: 6px; }
+  .chat-body::-webkit-scrollbar-thumb{ background: rgba(79, 70, 229, 0.2); border-radius: 10px; }
+
+  .msg-row{ display: flex; gap: 9px; max-width: 100%; animation: rise .35s ease both; }
+  @keyframes rise{ from{ opacity: 0; transform: translateY(8px); } to{ opacity: 1; transform: translateY(0); } }
+
+  .msg-row.bot{ align-self: flex-start; }
+  .msg-row.user{ align-self: flex-end; flex-direction: row-reverse; }
+
+  .avatar{
+    width: 26px; height: 26px; border-radius: 8px;
+    flex-shrink: 0; margin-top: 2px;
+    background: var(--grad-brand);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .avatar svg{ width: 14px; height: 14px; }
+
+  .bubble{
+    padding: 11px 14px;
+    border-radius: var(--radius-md);
+    font-size: 13.5px;
+    line-height: 1.55;
+    max-width: 290px;
+  }
+  .msg-row.bot .bubble{
+    background: var(--grad-bot-bubble);
+    border: 1px solid var(--line);
+    border-top-left-radius: 4px;
+    color: var(--text-primary);
+  }
+  .msg-row.user .bubble{
+    background: var(--blue-accent);
+    border-top-right-radius: 4px;
+    color: #fff;
+    font-weight: 500;
+  }
+
+  /* ---- Quick reply buttons (brand selection) ---- */
+  .quick-replies{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+    padding-left: 35px;
+    padding-right: 8px;
+  }
+  .qr-btn{
+    width: 100%;
+    border: none;
+    background: var(--qr-color, rgba(79, 70, 229, 0.08));
+    color: var(--qr-text, var(--purple-400));
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 11px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all .15s ease;
+    text-align: left;
+    box-shadow: 0 2px 8px -3px rgba(20, 20, 40, 0.18);
+  }
+  .qr-btn:hover:not(:disabled){
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px -4px rgba(20, 20, 40, 0.3);
+  }
+  .qr-btn:disabled{
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .qr-btn.selected{
+    outline: 2px solid var(--qr-color, var(--blue-accent));
+    outline-offset: 2px;
+  }
+
+  /* ---- Uploaded image preview bubble ---- */
+  .img-bubble{
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--line-strong);
+    max-width: 200px;
+  }
+  .img-bubble img{ display: block; width: 100%; height: auto; }
+
+  /* ---- Analyzing / loading state ---- */
+  .analyzing-card{
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    border-top-left-radius: 4px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 270px;
+  }
+  .analyzing-title{
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .pulse-dot{
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--purple-400);
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%, 100%{ opacity: 0.3; transform: scale(0.85); }
+    50%{ opacity: 1; transform: scale(1.15); }
+  }
+  .analyzing-step{
+    font-size: 11.5px;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .analyzing-step.active{ color: var(--purple-400); }
+  .analyzing-step .check{ width: 12px; text-align: center; }
+
+  /* ---- Persona summary card ---- */
+  .persona-card{
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    border-top-left-radius: 4px;
+    padding: 14px 16px;
+    max-width: 290px;
+  }
+  .persona-card .label{
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--purple-400);
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .persona-grid{ display: flex; flex-direction: column; gap: 6px; }
+  .persona-row{ display: flex; gap: 8px; font-size: 12.5px; }
+  .persona-row .k{ color: var(--text-faint); min-width: 64px; flex-shrink: 0; }
+  .persona-row .v{ color: var(--text-primary); font-weight: 500; }
+  .keyword-tags{ display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .keyword-tag{
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    background: rgba(61, 79, 224, 0.1);
+    color: var(--blue-accent);
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .enforced-rules-box{
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+  }
+  .enforced-rules-label{
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .enforced-rules-text{
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* ---- Description result cards ---- */
+  .copy-set{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-left: 35px;
+    width: 100%;
+  }
+  .copy-card{
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 17px 15px;
+    max-width: 340px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 10px -4px rgba(60, 70, 150, 0.12);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    animation: card-rise .4s ease both;
+    cursor: pointer;
+  }
+  .copy-card:nth-child(1){ animation-delay: 0s; }
+  .copy-card:nth-child(2){ animation-delay: .08s; }
+  .copy-card:nth-child(3){ animation-delay: .16s; }
+  @keyframes card-rise{
+    from{ opacity: 0; transform: translateY(10px) scale(0.98); }
+    to{ opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .copy-card:hover{
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -10px rgba(67, 56, 202, 0.28);
+    border-color: var(--line-strong);
+  }
+  .copy-card::before{
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--grad-brand);
+  }
+  .copy-card-head{
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .copy-index{
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #ffffff;
+    background: var(--grad-brand);
+    padding: 4px 10px;
+    border-radius: 999px;
+    box-shadow: 0 3px 10px -2px rgba(67, 56, 202, 0.45);
+  }
+  .copy-copy-btn{
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--text-faint);
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    padding: 4px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .copy-copy-btn:hover{ color: var(--text-primary); border-color: var(--line-strong); }
+  .copy-copy-btn.copied{ color: #4ade80; border-color: rgba(74,222,128,0.4); }
+
+  .copy-text{
+    font-size: 13.5px;
+    color: var(--text-primary);
+    line-height: 1.75;
+    word-break: keep-all;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  .copy-line{
+    margin: 0 0 8px 0;
+  }
+  .copy-line:last-child{
+    margin-bottom: 0;
+  }
+
+  .copy-actions{
+    display: flex;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
+  }
+  .copy-action-btn{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 7px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .15s ease;
+    white-space: nowrap;
+  }
+  .copy-action-icon{
+    font-weight: 800;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .copy-action-btn:hover:not(:disabled){
+    border-color: var(--blue-accent);
+    color: var(--blue-accent);
+    background: rgba(61, 79, 224, 0.05);
+  }
+  .copy-action-btn:disabled{
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .copy-action-undo:hover:not(:disabled){
+    border-color: var(--text-faint);
+    color: var(--text-primary);
+    background: var(--bg-panel);
+  }
+
+  /* ---- Error bubble ---- */
+  .error-bubble{
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #c0392b;
+    border-radius: var(--radius-md);
+    border-top-left-radius: 4px;
+    padding: 11px 14px;
+    font-size: 12.5px;
+    max-width: 290px;
+  }
+  .retry-btn{
+    display: block;
+    margin-top: 10px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: #ffffff;
+    color: #c0392b;
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .retry-btn:hover{
+    background: #c0392b;
+    color: #ffffff;
+  }
+  .retry-btn:disabled{
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ---- Footer / drop zone ---- */
+  .chat-footer{
+    flex-shrink: 0;
+    padding: 14px 16px 18px;
+    border-top: 1px solid var(--line);
+    background: #fafbfe;
+  }
+
+  .dropzone{
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all .18s ease;
+    background: #ffffff;
+  }
+  .dropzone:hover{
+    border-color: var(--purple-400);
+    background: rgba(79, 70, 229, 0.04);
+  }
+  .dropzone.dragover{
+    border-color: var(--purple-400);
+    background: rgba(79, 70, 229, 0.08);
+    transform: scale(1.01);
+  }
+  .dropzone.disabled{
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  .dropzone-icon{
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .dropzone-icon svg{ width: 17px; height: 17px; color: var(--purple-400); }
+  .dropzone-text{ flex: 1; line-height: 1.4; }
+  .dropzone-text .main{ font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+  .dropzone-text .sub{ font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+  #fileInput{ display: none; }
+
+  .footer-hint{
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-top: 10px;
+    font-family: var(--font-mono);
+  }
+
+  /* ============== Side Panel (메타 미리보기 + 즐겨찾기) ============== */
+  .side-panel{
+    width: 0;
+    max-width: 440px;
+    height: 86vh;
+    max-height: 820px;
+    flex-shrink: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateX(-12px);
+    transition: width .45s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity .35s ease,
+                transform .45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* 첫 디스크립션 생성 시 app-layout에 이 클래스가 붙으며 패널이 펼쳐진다 */
+  .app-layout.has-panel .side-panel{
+    width: 100%;
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .side-panel-inner{
+    width: 440px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .side-section{
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    box-shadow: 0 30px 70px -25px rgba(60, 70, 150, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .side-section-head{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .side-section-head .icon{
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    background: var(--grad-brand);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .side-section-head .icon svg{ width: 14px; height: 14px; }
+  .side-section-head .title{ font-weight: 700; font-size: 13.5px; }
+  .side-section-head .subtitle{ font-size: 11px; color: var(--text-faint); }
+
+  /* 클릭 가능한 헤더(예: 즐겨찾기 접기/펼치기 토글) — <button>을 일반 헤더처럼 보이게 리셋 */
+  .side-section-head-toggle{
+    width: 100%;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: var(--font-display);
+    text-align: left;
+    transition: background .15s ease;
+  }
+  .side-section-head-toggle:hover{
+    background: var(--bg-panel);
+  }
+  .side-section-head-text{
+    flex: 1;
+    min-width: 0;
+  }
+  .side-section-head-toggle .chevron{
+    width: 16px; height: 16px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    transition: transform .25s ease;
+  }
+  /* 접힌 상태에서는 화살표가 위쪽을 가리키도록 180도 회전 */
+  .side-section-head-toggle[aria-expanded="false"] .chevron{
+    transform: rotate(-90deg);
+  }
+
+  /* ---- 메타 피드 미리보기 모형 ----
+     side-panel-inner는 위아래로 preview-section(미리보기)과 favorites-section(즐겨찾기),
+     두 카드를 나눠 갖는다. 미리보기가 항상 더 넉넉한 비중(약 65%)을 차지하도록
+     flex-grow 비율을 5:3으로 주고, 내용이 그 공간을 넘으면 내부 스크롤로 처리한다.
+     헤더("메타 피드 미리보기" 타이틀)는 스크롤과 무관하게 항상 고정. */
+  .preview-section{
+    flex: 5 1 0;
+    min-height: 320px;
+    max-height: 68%;
+  }
+  #metaMockMount{
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  #metaMockMount::-webkit-scrollbar{ width: 6px; }
+  #metaMockMount::-webkit-scrollbar-thumb{ background: rgba(79, 70, 229, 0.2); border-radius: 10px; }
+  .meta-mock{
+    margin: 16px 18px 18px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #ffffff;
+  }
+  .meta-mock-head{
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 12px;
+  }
+  .meta-mock-avatar{
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--grad-brand);
+    flex-shrink: 0;
+  }
+  .meta-mock-meta{ line-height: 1.3; flex: 1; min-width: 0; }
+  .meta-mock-brand{ font-size: 12.5px; font-weight: 700; }
+  .meta-mock-sponsored{ font-size: 10.5px; color: var(--text-faint); }
+  .meta-mock-dots{ color: var(--text-faint); font-size: 16px; line-height: 1; padding: 0 4px; }
+
+  .meta-mock-image{
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--bg-panel);
+    overflow: hidden;
+  }
+  .meta-mock-image img{
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .meta-mock-image-empty{
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint);
+    font-size: 11.5px;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .meta-mock-actions{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 12px 4px;
+    color: var(--text-secondary);
+  }
+  .meta-mock-actions svg{ width: 19px; height: 19px; }
+
+  .meta-mock-cta-row{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+    background: var(--bg-panel);
+  }
+  .meta-mock-cta-text{ font-size: 11px; color: var(--text-faint); line-height: 1.3; }
+  .meta-mock-cta-text strong{ color: var(--text-primary); display: block; font-size: 12px; }
+  .meta-mock-cta-btn{
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--bg-deep);
+    border: 1px solid var(--line-strong);
+    padding: 6px 12px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+
+  .meta-mock-caption{
+    padding: 10px 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    border-top: 1px solid var(--line);
+  }
+  .meta-mock-caption .brand-name{ font-weight: 700; margin-right: 5px; }
+  .meta-mock-caption-line{ margin: 0 0 4px 0; }
+  .meta-mock-caption-empty{
+    color: var(--text-faint);
+    font-style: normal;
+  }
+
+  .meta-mock-empty-state{
+    padding: 30px 18px 24px;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  /* ---- 즐겨찾기 히스토리 ---- */
+  .favorites-section{
+    flex: 3 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    transition: flex-grow .25s ease, flex-basis .25s ease;
+  }
+  /* 접힌 상태: 헤더만 남기고 나머지 영역은 차지하는 공간을 0으로 줄인다.
+     이때 preview-section이 남는 공간을 모두 차지하도록 grow를 1로 키운다. */
+  .favorites-section.collapsed{
+    flex: 0 0 auto;
+  }
+  .favorites-section.collapsed ~ .preview-section,
+  .preview-section:has(~ .favorites-section.collapsed),
+  .preview-section.expanded{
+    flex-grow: 1;
+    max-height: none;
+  }
+
+  .favorites-collapsible{
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+  .favorites-section.collapsed .favorites-collapsible{
+    flex: 0 0 0;
+    overflow: hidden;
+  }
+
+
+    padding: 12px 14px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .favorites-search{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid var(--line);
+    background: var(--bg-panel);
+    border-radius: 9px;
+    padding: 7px 10px;
+  }
+  .favorites-search svg{
+    width: 14px; height: 14px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .favorites-search input{
+    border: none;
+    outline: none;
+    background: none;
+    font-family: var(--font-display);
+    font-size: 12px;
+    color: var(--text-primary);
+    width: 100%;
+  }
+  .favorites-search input::placeholder{ color: var(--text-faint); }
+
+  .favorites-brand-chips{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .fav-chip{
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--text-secondary);
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .fav-chip:hover{ border-color: var(--line-strong); }
+  .fav-chip.active{
+    background: var(--qr-color, var(--blue-accent));
+    color: var(--qr-text, #ffffff);
+    border-color: transparent;
+  }
+
+  .favorites-list{
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .favorites-list::-webkit-scrollbar{ width: 6px; }
+  .favorites-list::-webkit-scrollbar-thumb{ background: rgba(79, 70, 229, 0.2); border-radius: 10px; }
+
+  .favorites-empty{
+    padding: 30px 14px;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .favorites-empty .star-ghost{
+    font-size: 22px;
+    display: block;
+    margin-bottom: 8px;
+    opacity: .5;
+  }
+  .favorites-no-match{
+    padding: 24px 14px;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .favorite-card{
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 13px;
+    position: relative;
+    animation: card-rise .3s ease both;
+  }
+  .favorite-card-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .favorite-card-brand{
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--blue-accent);
+    font-family: var(--font-mono);
+    letter-spacing: 0.03em;
+  }
+  .favorite-card-remove{
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px;
+    transition: color .15s ease;
+  }
+  .favorite-card-remove:hover{ color: #c0392b; }
+  .favorite-card-text{
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-primary);
+    word-break: keep-all;
+    margin-bottom: 8px;
+  }
+  .favorite-card-actions{
+    display: flex;
+    gap: 6px;
+  }
+  .favorite-card-actions button{
+    flex: 1;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .favorite-card-actions button:hover{
+    border-color: var(--blue-accent);
+    color: var(--blue-accent);
+  }
+
+  /* 별표(즐겨찾기) 버튼 - 디스크립션 카드 액션 줄에 추가됨 */
+  .copy-action-star{
+    flex: 0 0 auto;
+    width: 34px;
+    font-size: 15px;
+    padding: 7px 0;
+  }
+  .copy-action-star.starred{
+    color: #f5a623;
+    border-color: #f5d399;
+    background: rgba(245, 166, 35, 0.08);
+  }
+
+  /* responsive */
+  @media (max-width: 480px){
+    .chat-shell{ height: 100vh; max-height: none; border-radius: 0; }
+    body{ padding: 0; }
+    .app-layout{ flex-direction: column; }
+    .side-panel{
+      width: 100% !important;
+      max-width: 100%;
+      height: auto;
+      max-height: none;
+    }
+    .app-layout.has-panel .side-panel{ transform: none; }
+    .side-panel-inner{ width: 100%; padding: 16px; height: auto; }
+    .preview-section{ max-height: 420px; }
+  }
+
+  /* reduced motion */
+  @media (prefers-reduced-motion: reduce){
+    .msg-row, .pulse-dot, .copy-card{ animation: none; }
+    .copy-card:hover{ transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-layout" id="appLayout">
+
+<div class="chat-shell">
+
+  <!-- ===== Header ===== -->
+  <div class="chat-header">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12C4 7.58 7.58 4 12 4s8 3.58 8 8-3.58 8-8 8c-1.4 0-2.7-.36-3.84-1L4 20l1.06-4.08C4.39 14.79 4 13.44 4 12z" stroke="white" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.5 11.5h7M8.5 14h4.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+    <div class="header-text">
+      <div class="name">Copyvisor Description AI</div>
+      <div class="status"><span class="dot"></span>온라인 · 이미지 분석 대기 중</div>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-icon-btn" title="대화 초기화" id="resetBtn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+
+  <!-- ===== Messages ===== -->
+  <div class="chat-body" id="chatBody"></div>
+
+  <!-- ===== Footer: dropzone ===== -->
+  <div class="chat-footer">
+    <div class="dropzone disabled" id="dropzone">
+      <div class="dropzone-icon">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7 9m5-5l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="dropzone-text">
+        <div class="main" id="dropzoneMain">먼저 광고주 브랜드를 선택해 주세요</div>
+        <div class="sub" id="dropzoneSub">이미지를 드래그하거나 탭하여 업로드</div>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" />
+    <div class="footer-hint">업로드 즉시 자동으로 분석이 시작됩니다 · 별도 생성 버튼 없음</div>
+  </div>
+
+</div>
+
+<!-- ===== Side Panel: 메타 피드 미리보기 + 즐겨찾기 히스토리 =====
+     초기에는 .side-panel의 width가 0으로 숨겨져 있다가,
+     첫 디스크립션 생성 시 #appLayout에 has-panel 클래스가 붙으며 펼쳐진다. -->
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-inner">
+
+    <div class="side-section preview-section expanded">
+      <div class="side-section-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="white" stroke-width="1.6"/><path d="M3 9h18" stroke="white" stroke-width="1.6"/></svg>
+        </div>
+        <div>
+          <div class="title">메타 피드 미리보기</div>
+          <div class="subtitle">실제 인스타그램·페이스북 피드 모형</div>
+        </div>
+      </div>
+      <div id="metaMockMount">
+        <!-- JS가 이 안에 .meta-mock 또는 빈 상태를 렌더링 -->
+        <div class="meta-mock-empty-state">디스크립션이 생성되면<br>여기에 미리보기가 표시됩니다</div>
+      </div>
+    </div>
+
+    <div class="side-section favorites-section collapsed">
+      <button class="side-section-head side-section-head-toggle" id="favoritesToggleBtn" aria-expanded="false">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="side-section-head-text">
+          <div class="title">즐겨찾기</div>
+          <div class="subtitle" id="favoritesCount">저장된 디스크립션 0개</div>
+        </div>
+        <svg class="chevron" id="favoritesChevron" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+
+      <div class="favorites-collapsible" id="favoritesCollapsible">
+        <!-- 즐겨찾기가 1개 이상 쌓이면 표시되는 검색/필터 바 -->
+        <div class="favorites-toolbar" id="favoritesToolbar" hidden>
+          <div class="favorites-search">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <input type="text" id="favoritesSearchInput" placeholder="저장한 디스크립션 검색" />
+          </div>
+          <div class="favorites-brand-chips" id="favoritesBrandChips"></div>
+        </div>
+
+        <div class="favorites-list" id="favoritesList">
+          <div class="favorites-empty">
+            <span class="star-ghost">☆</span>
+            마음에 드는 디스크립션의<br>별표를 누르면 여기에 모아둘 수 있어요
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ============================================================
+   Copyvisor AI — Chatbot Frontend (단일 파일)
+   - 백엔드: POST /api/chat/generate (multipart/form-data: brand_id, image)
+   - 백엔드: GET  /api/chat/brands   (브랜드 퀵버튼 목록)
+   ============================================================ */
+
+// 백엔드 주소 — 실제 배포 시 본인 서버 도메인으로 교체하세요.
+const API_BASE = "http://localhost:8000";
+
+// 브랜드 목록을 백엔드에서 못 가져올 경우를 대비한 폴백 (UI 데모용)
+const FALLBACK_BRANDS = [
+  { brand_id: "hogangnono", brand_name: "호갱노노" },
+  { brand_id: "zigbang", brand_name: "직방" },
+  { brand_id: "npay", brand_name: "네이버페이" },
+  { brand_id: "heydealer", brand_name: "헤이딜러" },
+  { brand_id: "lx_hausys", brand_name: "LX하우시스" },
+];
+
+// 브랜드 퀵버튼에 적용할 실제 브랜드 컬러.
+// 레퍼런스 이미지 기준: 헤이딜러=블루, 호갱노노=퍼플/마젠타, 직방=오렌지,
+// 네이버페이=그린, LX하우시스=버건디. 텍스트색은 배경 대비를 고려해 함께 지정.
+const BRAND_COLORS = {
+  heydealer:  { bg: "#0000EE", text: "#FFD400" }, // 블루 배경 + 옐로우 텍스트
+  hogangnono: { bg: "#9B00F2", text: "#FFFFFF" }, // 퍼플/마젠타
+  zigbang:    { bg: "#FF8B00", text: "#1A1A1A" }, // 오렌지
+  npay:       { bg: "#5DA042", text: "#FFFFFF" }, // 그린
+  lx_hausys:  { bg: "#7A0000", text: "#FFFFFF" }, // 버건디
+};
+function getBrandColor(brandId){
+  return BRAND_COLORS[brandId] ?? { bg: "var(--grad-brand)", text: "#ffffff" };
+}
+
+const chatBody = document.getElementById("chatBody");
+const dropzone = document.getElementById("dropzone");
+const dropzoneMain = document.getElementById("dropzoneMain");
+const dropzoneSub = document.getElementById("dropzoneSub");
+const fileInput = document.getElementById("fileInput");
+const resetBtn = document.getElementById("resetBtn");
+const appLayout = document.getElementById("appLayout");
+const sidePanel = document.getElementById("sidePanel");
+const metaMockMount = document.getElementById("metaMockMount");
+const favoritesList = document.getElementById("favoritesList");
+const favoritesCountEl = document.getElementById("favoritesCount");
+const favoritesToolbar = document.getElementById("favoritesToolbar");
+const favoritesSearchInput = document.getElementById("favoritesSearchInput");
+const favoritesBrandChips = document.getElementById("favoritesBrandChips");
+const favoritesToggleBtn = document.getElementById("favoritesToggleBtn");
+const favoritesCollapsibleEl = document.getElementById("favoritesCollapsible");
+
+let selectedBrandId = null;
+let selectedBrandName = null;
+let isProcessing = false;
+
+// 현재 화면에 표시 중인 이미지/브랜드 — 메타 미리보기 모형을 그릴 때 사용.
+// 디스크립션 카드를 클릭하면 currentPreviewCopy만 바뀌고 이미지/브랜드는 유지된다.
+let currentPreviewImageUrl = null;
+let currentPreviewBrandName = null;
+let currentPreviewCopy = null;
+
+// 즐겨찾기 목록 — { id, brandName, copyText, imageUrl } 객체의 배열.
+// 새로고침하면 사라지는 세션 한정 메모리 저장소다 (요청 범위는 화면 내 임시 보관).
+let favorites = [];
+let favoriteIdSeq = 0;
+
+// 즐겨찾기 목록 필터 상태 — 검색어와 선택된 브랜드 칩(복수 선택 가능).
+// "전체"가 선택된 상태(빈 Set)일 때는 모든 브랜드를 보여준다.
+let favoritesSearchQuery = "";
+let favoritesActiveBrandIds = new Set();
+
+/* ---------- 유틸: 메시지 DOM 추가 ---------- */
+function scrollToBottom(){
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function botIconSVG(){
+  return `<svg viewBox="0 0 24 24" fill="none"><path d="M4 12C4 7.58 7.58 4 12 4s8 3.58 8 8-3.58 8-8 8c-1.4 0-2.7-.36-3.84-1L4 20l1.06-4.08C4.39 14.79 4 13.44 4 12z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+}
+
+function addBotBubble(html){
+  const row = document.createElement("div");
+  row.className = "msg-row bot";
+  row.innerHTML = `
+    <div class="avatar">${botIconSVG()}</div>
+    <div class="bubble">${html}</div>
+  `;
+  chatBody.appendChild(row);
+  scrollToBottom();
+  return row;
+}
+
+function addUserBubble(html){
+  const row = document.createElement("div");
+  row.className = "msg-row user";
+  row.innerHTML = `<div class="bubble">${html}</div>`;
+  chatBody.appendChild(row);
+  scrollToBottom();
+  return row;
+}
+
+function addUserImageBubble(imageUrl){
+  const row = document.createElement("div");
+  row.className = "msg-row user";
+  row.innerHTML = `<div class="img-bubble"><img src="${imageUrl}" alt="업로드된 광고 소재" /></div>`;
+  chatBody.appendChild(row);
+  scrollToBottom();
+  return row;
+}
+
+/* ---------- 1. 초기 진입: 브랜드 퀵버튼 표시 ---------- */
+async function initChat(){
+  addBotBubble("안녕하세요! 👋 메타 피드 광고 디스크립션을 자동으로 만들어 드리는 <strong>Copyvisor Description AI</strong>입니다.<br><br>먼저 어떤 브랜드의 디스크립션을 만들지 선택해 주세요.");
+
+  let brands = FALLBACK_BRANDS;
+  try{
+    const res = await fetch(`${API_BASE}/api/chat/brands`);
+    if(res.ok){
+      const data = await res.json();
+      if(data.brands && data.brands.length){
+        brands = data.brands;
+      }
+    }
+  }catch(e){
+    // 백엔드 미연결 시 폴백 브랜드로 UI 데모 진행
+    console.warn("브랜드 목록 조회 실패, 폴백 데이터 사용:", e);
+  }
+
+  renderBrandQuickReplies(brands);
+}
+
+function renderBrandQuickReplies(brands){
+  const wrap = document.createElement("div");
+  wrap.className = "quick-replies";
+  wrap.id = "brandQuickReplies";
+
+  brands.forEach(b => {
+    const btn = document.createElement("button");
+    btn.className = "qr-btn";
+    btn.textContent = b.brand_name;
+    const color = getBrandColor(b.brand_id);
+    btn.style.setProperty("--qr-color", color.bg);
+    btn.style.setProperty("--qr-text", color.text);
+    btn.onclick = () => selectBrand(b.brand_id, b.brand_name, wrap, btn);
+    wrap.appendChild(btn);
+  });
+
+  chatBody.appendChild(wrap);
+  scrollToBottom();
+}
+
+/* ---------- 2. 브랜드 선택 ---------- */
+function selectBrand(brandId, brandName, wrapEl, clickedBtn){
+  selectedBrandId = brandId;
+  selectedBrandName = brandName;
+
+  // 퀵버튼 비활성화 + 선택된 버튼 하이라이트
+  [...wrapEl.querySelectorAll(".qr-btn")].forEach(b => b.disabled = true);
+  clickedBtn.classList.add("selected");
+  clickedBtn.disabled = false;
+
+  addUserBubble(brandName);
+  addBotBubble(`<strong>${brandName}</strong> 톤앤매너로 디스크립션을 만들어 드릴게요.<br>아래 영역에 광고에 사용할 이미지를 올려주세요. 업로드되는 즉시 자동으로 분석을 시작합니다.`);
+
+  // 드롭존 활성화
+  dropzone.classList.remove("disabled");
+  dropzoneMain.textContent = "이미지를 여기에 드래그하거나 탭하여 업로드";
+  dropzoneSub.textContent = `현재 브랜드: ${brandName}`;
+}
+
+/* ---------- 3. 이미지 업로드 → 즉시 분석 트리거 ---------- */
+function setupDropzone(){
+  dropzone.addEventListener("click", () => {
+    if(dropzone.classList.contains("disabled") || isProcessing) return;
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if(file) handleImageUpload(file);
+    fileInput.value = "";
+  });
+
+  ["dragenter", "dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      if(dropzone.classList.contains("disabled") || isProcessing) return;
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    if(dropzone.classList.contains("disabled") || isProcessing) return;
+    const file = e.dataTransfer.files[0];
+    if(file) handleImageUpload(file);
+  });
+}
+
+// isProcessing 잠금 + 드롭존 비활성화를 감싸는 공용 헬퍼.
+// 최초 업로드와 "다시 시도" 버튼 클릭 모두 이 함수를 통해 호출되므로
+// 잠금/해제 로직이 한 곳에만 존재한다.
+async function runLocked(file, brandId){
+  if(isProcessing) return;
+  isProcessing = true;
+  dropzone.classList.add("disabled");
+  try{
+    await runAnalysisAndGenerate(file, brandId);
+  }finally{
+    isProcessing = false;
+    dropzone.classList.remove("disabled");
+  }
+}
+
+async function handleImageUpload(file){
+  // 현재 선택된 브랜드 ID를 호출 시점에 명시적으로 캡처
+  // (전역 상태를 함수 내부 깊은 곳에서 암묵적으로 참조하지 않고, 인자로 명시 전달)
+  const brandIdAtUploadTime = selectedBrandId;
+
+  if(!brandIdAtUploadTime){
+    addBotBubble("먼저 브랜드를 선택해 주세요!");
+    return;
+  }
+  if(!["image/jpeg", "image/png", "image/webp"].includes(file.type)){
+    addBotBubble("⚠️ JPG, PNG, WEBP 형식의 이미지만 업로드할 수 있어요.");
+    return;
+  }
+  if(isProcessing) return;
+
+  // 유저가 올린 이미지를 채팅창에 미리보기로 표시
+  const imageUrl = URL.createObjectURL(file);
+  addUserImageBubble(imageUrl);
+
+  // 메타 피드 미리보기 모형에서 쓸 수 있도록 현재 이미지를 기억해둔다.
+  currentPreviewImageUrl = imageUrl;
+  currentPreviewBrandName = selectedBrandName;
+
+  // [핵심] 버튼 클릭 없이, 업로드 직후 바로 분석 시작
+  // file(File 객체)과 brandId(string)만 순수 값으로 전달 — FormData는 여기서 만들지 않음
+  await runLocked(file, brandIdAtUploadTime);
+}
+
+/* ---------- 4. 분석 진행 상태 UI ---------- */
+function addAnalyzingCard(){
+  const row = document.createElement("div");
+  row.className = "msg-row bot";
+  row.innerHTML = `
+    <div class="avatar">${botIconSVG()}</div>
+    <div class="analyzing-card" id="analyzingCard">
+      <div class="analyzing-title"><span class="pulse-dot"></span>이미지 분석 중...</div>
+      <div class="analyzing-step active" data-step="scan"><span class="check">○</span> 타겟·시각 무드 스캔</div>
+      <div class="analyzing-step" data-step="persona"><span class="check">○</span> 브랜드 언어 DNA 매칭</div>
+      <div class="analyzing-step" data-step="copy"><span class="check">○</span> 디스크립션 3종 생성</div>
+    </div>
+  `;
+  chatBody.appendChild(row);
+  scrollToBottom();
+  return row;
+}
+
+function advanceAnalyzingStep(stepName){
+  const card = document.getElementById("analyzingCard");
+  if(!card) return;
+  const steps = ["scan", "persona", "copy"];
+  const idx = steps.indexOf(stepName);
+  steps.forEach((s, i) => {
+    const el = card.querySelector(`[data-step="${s}"]`);
+    if(!el) return;
+    if(i < idx){
+      el.classList.remove("active");
+      el.querySelector(".check").textContent = "✓";
+      el.style.color = "#4ade80";
+    } else if(i === idx){
+      el.classList.add("active");
+    }
+  });
+}
+
+/* ---------- 5. 백엔드 호출 + 결과 렌더링 ---------- */
+// file: File 객체 (raw 파일 데이터), brandId: string
+// 이 함수가 호출되는 "이 시점"에만 FormData를 새로 생성한다.
+// FormData 인스턴스를 변수에 담아 다른 함수로 넘기거나, 상태(state)로
+// 보관하거나, postMessage 등으로 전달하지 않는다 — FormData/File 핸들은
+// 구조화 복제(structured clone) 대상이 아니므로 직렬화가 필요한 모든
+// 경계(다른 윈도우, 워커, 일부 상태관리 라이브러리)를 넘기면 에러가 난다.
+async function runAnalysisAndGenerate(file, brandId){
+  const analyzingRow = addAnalyzingCard();
+
+  // 연출용 단계 진행 (실제 진행 상황과 100% 동기화되진 않지만 대기 체감을 줄여줌)
+  const stepTimer1 = setTimeout(() => advanceAnalyzingStep("persona"), 900);
+  const stepTimer2 = setTimeout(() => advanceAnalyzingStep("copy"), 2000);
+
+  try{
+    // [필수] FormData는 fetch 호출 직전, 이 스코프 안에서만 생성하고 사용한다.
+    const formData = new FormData();
+    formData.append("brand_id", brandId);
+    formData.append("image", file, file.name);
+
+    let res;
+    try{
+      res = await fetch(`${API_BASE}/api/chat/generate`, {
+        method: "POST",
+        body: formData,
+      });
+    }catch(networkErr){
+      // fetch 자체가 reject된 경우 = 서버에 연결조차 못 한 상태.
+      // (서버 미기동 / 잘못된 API_BASE 주소 / CORS 차단 / 네트워크 단절 등)
+      // 브라우저는 보안상 정확한 사유를 알려주지 않고 전부 "Failed to fetch"로
+      // 뭉뚱그리기 때문에, 사용자가 직접 점검할 항목을 안내한다.
+      throw new Error(
+        `백엔드 서버(${API_BASE})에 연결할 수 없어요. ` +
+        `① 서버가 켜져 있는지, ② 코드 상단 API_BASE 주소가 맞는지, ` +
+        `③ 브라우저 콘솔(F12)에 CORS 에러가 찍히는지 확인해 주세요.`
+      );
+    }
+
+    clearTimeout(stepTimer1);
+    clearTimeout(stepTimer2);
+    analyzingRow.remove();
+
+    if(!res.ok){
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `서버 오류 (${res.status})`);
+    }
+
+    const data = await res.json();
+    renderAnalysisCard(data.image_analysis, data.brand_config);
+    renderCopyResults(data.generated_copies, brandId);
+
+  }catch(err){
+    clearTimeout(stepTimer1);
+    clearTimeout(stepTimer2);
+    if(document.getElementById("analyzingCard")) analyzingRow.remove();
+    // 실패한 file/brandId를 그대로 들고 있다가, "다시 시도" 버튼 클릭 시 재사용한다.
+    // (여기서도 FormData가 아니라 순수 File 객체와 문자열만 넘긴다)
+    renderErrorBubble(err.message, file, brandId);
+  }
+}
+
+function renderAnalysisCard(imageAnalysis, brandConfig){
+  const row = document.createElement("div");
+  row.className = "msg-row bot";
+
+  row.innerHTML = `
+    <div class="avatar">${botIconSVG()}</div>
+    <div class="persona-card">
+      <div class="label">AI 분석 결과</div>
+      <div class="persona-grid">
+        <div class="persona-row"><span class="k">타겟</span><span class="v">${imageAnalysis.detected_target ?? "-"}</span></div>
+        <div class="persona-row"><span class="k">시각 무드</span><span class="v">${imageAnalysis.visual_context ?? "-"}</span></div>
+        <div class="persona-row"><span class="k">적용 브랜드</span><span class="v">${brandConfig.applied_brand ?? "-"}</span></div>
+      </div>
+      <div class="enforced-rules-box">
+        <div class="enforced-rules-label">적용된 언어 규칙</div>
+        <div class="enforced-rules-text">${brandConfig.enforced_rules ?? "-"}</div>
+      </div>
+    </div>
+  `;
+  chatBody.appendChild(row);
+  scrollToBottom();
+}
+
+function renderCopyResults(generatedCopies, brandId){
+  const versions = [
+    generatedCopies.ver_1,
+    generatedCopies.ver_2,
+    generatedCopies.ver_3,
+  ];
+
+  addBotBubble(`완성된 디스크립션 ${versions.length}종을 준비했어요. 마음에 드는 디스크립션을 바로 복사해서 사용하세요 ✨`);
+
+  const wrap = document.createElement("div");
+  wrap.className = "copy-set";
+
+  versions.forEach((copyText, i) => {
+    wrap.appendChild(buildCopyCard(copyText, brandId, selectedBrandName, i + 1));
+  });
+
+  chatBody.appendChild(wrap);
+  scrollToBottom();
+
+  // 첫 디스크립션 세트가 나오는 순간 사이드 패널을 펼치고,
+  // 1번 디스크립션을 기본값으로 메타 미리보기에 띄운다.
+  openSidePanel();
+  updateMetaMockPreview(versions[0]);
+
+  // 다음 이미지 업로드 유도
+  setTimeout(() => {
+    addBotBubble("다른 이미지로 새 디스크립션을 더 만들어볼까요? 계속해서 이미지를 업로드해 주세요.");
+  }, 400);
+}
+
+// 사이드 패널을 펼친다. 이미 펼쳐져 있으면 아무 동작도 하지 않는다(중복 호출 안전).
+function openSidePanel(){
+  appLayout.classList.add("has-panel");
+
+  // 디스크립션이 새로 생성될 때마다 즐겨찾기는 항상 접힌 상태로,
+  // 미리보기는 항상 확장된 상태로 초기화해서 미리보기가 최대한 크게 보이게 한다.
+  const favoritesSectionEl = document.querySelector(".favorites-section");
+  const previewSectionEl = document.querySelector(".preview-section");
+  if(favoritesSectionEl) favoritesSectionEl.classList.add("collapsed");
+  if(previewSectionEl) previewSectionEl.classList.add("expanded");
+  favoritesToggleBtn.setAttribute("aria-expanded", "false");
+}
+
+// 메타 피드 광고 미리보기 모형을 현재 이미지 + 주어진 디스크립션 텍스트로 갱신한다.
+function updateMetaMockPreview(copyText){
+  currentPreviewCopy = copyText;
+
+  const brandLabel = currentPreviewBrandName ?? "브랜드명";
+  const imageHtml = currentPreviewImageUrl
+    ? `<img src="${currentPreviewImageUrl}" alt="업로드한 광고 소재" />`
+    : `<div class="meta-mock-image-empty">이미지 미리보기</div>`;
+
+  const captionHtml = formatCopyTextHtml(copyText ?? "");
+
+  metaMockMount.innerHTML = `
+    <div class="meta-mock">
+      <div class="meta-mock-head">
+        <div class="meta-mock-avatar"></div>
+        <div class="meta-mock-meta">
+          <div class="meta-mock-brand">${escapeHtml(brandLabel)}</div>
+          <div class="meta-mock-sponsored">Sponsored · 🌐</div>
+        </div>
+        <div class="meta-mock-dots">⋯</div>
+      </div>
+      <div class="meta-mock-image">${imageHtml}</div>
+      <div class="meta-mock-actions">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s-7-4.5-9.5-9C.8 8.1 2.2 4.5 5.6 4.1c2-.2 3.6.8 4.4 2.3.8-1.5 2.4-2.5 4.4-2.3 3.4.4 4.8 4 3.1 7.9C19 16.5 12 21 12 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 1 1-3.8-7.1L21 3l-1.2 4.3A8.4 8.4 0 0 1 21 11.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 4l16 8-16 8 3-8-3-8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="meta-mock-cta-row">
+        <div class="meta-mock-cta-text">${escapeHtml(brandLabel)}<strong>지금 바로 확인해보세요</strong></div>
+        <div class="meta-mock-cta-btn">더 알아보기</div>
+      </div>
+      <div class="meta-mock-caption">
+        <span class="brand-name">${escapeHtml(brandLabel)}</span>${captionHtml}
+      </div>
+    </div>
+  `;
+}
+
+// 디스크립션 한 장(카드)을 만들고, 그 카드 안에서만 쓰이는 상태(현재 텍스트, 이전 버전 히스토리)를
+// 클로저로 들고 있는다. 카드마다 독립적으로 짧게/길게/되돌리기가 동작한다.
+function buildCopyCard(initialCopyText, brandId, brandName, indexNumber){
+  const card = document.createElement("div");
+  card.className = "copy-card";
+
+  // 카드 자체 상태: 현재 보여주는 디스크립션, 그리고 되돌리기를 위한 직전 버전 스택
+  let currentCopy = initialCopyText;
+  const history = []; // 직전 버전들을 쌓아두는 스택 (되돌리기용)
+  let favoriteId = null; // 이 카드의 현재 버전이 즐겨찾기에 들어가 있다면 그 id, 아니면 null
+
+  card.innerHTML = `
+    <div class="copy-card-head">
+      <span class="copy-index">DESCRIPTION 0${indexNumber}</span>
+      <button class="copy-copy-btn">복사</button>
+    </div>
+    <div class="copy-text"></div>
+    <div class="copy-actions">
+      <button class="copy-action-btn copy-action-star" data-action="star" title="즐겨찾기에 저장">☆</button>
+      <button class="copy-action-btn" data-action="shorter">
+        <span class="copy-action-icon">−</span>더 짧게
+      </button>
+      <button class="copy-action-btn" data-action="longer">
+        <span class="copy-action-icon">+</span>더 길게
+      </button>
+      <button class="copy-action-btn copy-action-undo" data-action="undo" disabled>
+        ↺ 되돌리기
+      </button>
+    </div>
+  `;
+
+  const textEl = card.querySelector(".copy-text");
+  const copyBtn = card.querySelector(".copy-copy-btn");
+  const starBtn = card.querySelector('[data-action="star"]');
+  const shorterBtn = card.querySelector('[data-action="shorter"]');
+  const longerBtn = card.querySelector('[data-action="longer"]');
+  const undoBtn = card.querySelector('[data-action="undo"]');
+
+  // 화면에 현재 디스크립션 텍스트를 반영 (문장 사이 줄바꿈을 시각적으로 분명하게 보여주기 위해
+  // 원본 줄바꿈(\n)은 한 칸 띄우고, 마침표/물음표/느낌표 뒤에 줄바꿈이 없는 경우에도
+  // 문장이 끝나는 지점마다 한 줄을 띄워 가독성을 높인다)
+  function renderText(){
+    textEl.innerHTML = formatCopyTextHtml(currentCopy);
+    // 텍스트가 바뀌면(짧게/길게/되돌리기) 직전에 즐겨찾기 해둔 상태와는
+    // 더 이상 같은 텍스트가 아니므로 별표를 다시 빈 별로 되돌린다.
+    setStarState(false);
+  }
+
+  function setStarState(starred){
+    favoriteId = starred ? favoriteId : null;
+    starBtn.textContent = starred ? "★" : "☆";
+    starBtn.classList.toggle("starred", starred);
+  }
+
+  renderText();
+
+  // 카드를 클릭하면(버튼 클릭은 제외) 이 디스크립션을 메타 미리보기에 띄운다.
+  card.addEventListener("click", (e) => {
+    if(e.target.closest("button")) return; // 버튼 클릭은 미리보기 갱신과 무관하게 자체 동작
+    updateMetaMockPreview(currentCopy);
+  });
+
+  copyBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(currentCopy).then(() => {
+      copyBtn.textContent = "복사됨 ✓";
+      copyBtn.classList.add("copied");
+      setTimeout(() => {
+        copyBtn.textContent = "복사";
+        copyBtn.classList.remove("copied");
+      }, 1500);
+    });
+  });
+
+  starBtn.addEventListener("click", () => {
+    if(favoriteId){
+      // 이미 즐겨찾기에 있으면 제거
+      removeFavorite(favoriteId);
+      setStarState(false);
+    }else{
+      // 새로 즐겨찾기에 추가
+      favoriteId = addFavorite(brandId, brandName, currentCopy);
+      setStarState(true);
+    }
+  });
+
+  function setActionButtonsLoading(loading){
+    shorterBtn.disabled = loading;
+    longerBtn.disabled = loading;
+    undoBtn.disabled = loading || history.length === 0;
+  }
+
+  async function handleDirection(direction){
+    setActionButtonsLoading(true);
+    const clickedBtn = direction === "shorter" ? shorterBtn : longerBtn;
+    const originalLabel = clickedBtn.innerHTML;
+    clickedBtn.innerHTML = "처리 중...";
+
+    try{
+      const res = await fetch(`${API_BASE}/api/chat/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_id: brandId,
+          original_copy: currentCopy,
+          direction: direction,
+        }),
+      });
+
+      if(!res.ok){
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `서버 오류 (${res.status})`);
+      }
+
+      const data = await res.json();
+      history.push(currentCopy); // 되돌리기를 위해 직전 버전 보관
+      currentCopy = data.refined_copy;
+      renderText();
+      // 이 카드가 현재 메타 미리보기에 떠 있는 카드라면, 미리보기도 같이 갱신
+      if(currentPreviewCopy !== null) updateMetaMockPreview(currentCopy);
+    }catch(err){
+      addBotBubble(`⚠️ 디스크립션 조정에 실패했어요. ${err.message}`);
+    }finally{
+      clickedBtn.innerHTML = originalLabel;
+      setActionButtonsLoading(false);
+    }
+  }
+
+  shorterBtn.addEventListener("click", () => handleDirection("shorter"));
+  longerBtn.addEventListener("click", () => handleDirection("longer"));
+
+  undoBtn.addEventListener("click", () => {
+    if(history.length === 0) return;
+    currentCopy = history.pop();
+    renderText();
+    undoBtn.disabled = history.length === 0;
+  });
+
+  return card;
+}
+
+// 디스크립션 텍스트를 문장 단위로 줄바꿈해서 보여주기 위한 포매터.
+// 1) 원본에 이미 있는 줄바꿈(\n)은 그대로 단락 구분으로 살리고
+// 2) 한 줄 안에 마침표(.)/물음표(?)/느낌표(!) 뒤 공백으로 이어지는 문장이
+//    여러 개면, 문장 경계에서도 줄을 띄워 가독성을 높인다.
+function formatCopyTextHtml(rawText){
+  // 이모지만으로 이루어진 줄인지 판별하는 정규식
+  const emojiOnlyRe = /^[\p{Emoji}\p{Emoji_Presentation}\u200d\ufe0f\s]+$/u;
+
+  const paragraphs = (rawText ?? "").split("\n").filter(p => p.trim() !== "");
+
+  // 이모지만 있는 단독 줄을 직전 줄에 붙여서 단독 줄 현상 방지
+  const mergedParagraphs = [];
+  for(const p of paragraphs){
+    if(emojiOnlyRe.test(p.trim()) && mergedParagraphs.length > 0){
+      // 이모지 전용 줄은 이전 문단 끝에 공백 없이 바로 붙인다
+      mergedParagraphs[mergedParagraphs.length - 1] += " " + p.trim();
+    }else{
+      mergedParagraphs.push(p);
+    }
+  }
+
+  const htmlParagraphs = mergedParagraphs.map(paragraph => {
+    // 문장 종결부호(.?!) 뒤에 공백이나 줄 끝이 오는 지점을 기준으로 줄바꿈 삽입
+    let withLineBreaks = escapeHtml(paragraph).replace(/([.?!])(\s+|$)/g, "$1<br>");
+    // 문단이 마침표 등으로 끝나는 경우, 맨 끝에 남는 불필요한 <br> 제거
+    withLineBreaks = withLineBreaks.replace(/<br>$/, "");
+    // <br> 직후에 이모지만 남는 경우 <br>을 제거해서 이모지를 앞 문장에 붙인다
+    withLineBreaks = withLineBreaks.replace(/<br>([\p{Emoji}\p{Emoji_Presentation}\ufe0f\u200d]+\s*)$/u, " $1");
+    return `<p class="copy-line">${withLineBreaks}</p>`;
+  });
+  return htmlParagraphs.join("");
+}
+
+function escapeHtml(str){
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+/* ---------- 즐겨찾기 히스토리 ---------- */
+
+// 즐겨찾기에 디스크립션 1개를 추가하고, 새로 생성된 favorite id를 반환한다.
+// 호출한 쪽(buildCopyCard)은 이 id를 들고 있다가 별표를 다시 누르면 removeFavorite에 넘긴다.
+function addFavorite(brandId, brandName, copyText){
+  const id = ++favoriteIdSeq;
+  favorites.push({
+    id,
+    brandId,
+    brandName: brandName ?? brandId,
+    copyText,
+    imageUrl: currentPreviewImageUrl,
+  });
+  renderFavoritesList();
+  return id;
+}
+
+function removeFavorite(id){
+  favorites = favorites.filter(f => f.id !== id);
+  renderFavoritesList();
+}
+
+// 검색창 입력 시 실시간으로 목록을 다시 그린다.
+favoritesSearchInput.addEventListener("input", (e) => {
+  favoritesSearchQuery = e.target.value.trim().toLowerCase();
+  renderFavoritesList();
+});
+
+// 즐겨찾기 헤더를 누르면 검색바+목록 영역을 접거나 펼친다.
+favoritesToggleBtn.addEventListener("click", () => {
+  const isCollapsed = favoritesToggleBtn.parentElement.classList.toggle("collapsed");
+  favoritesToggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
+  // 즐겨찾기를 접으면 미리보기 카드가 남는 공간을 모두 차지하도록 확장한다.
+  // (CSS :has() 선택자로도 동일하게 처리되지만, 구형 브라우저 호환을 위해 JS로도 명시한다)
+  const previewSectionEl = document.querySelector(".preview-section");
+  if(previewSectionEl) previewSectionEl.classList.toggle("expanded", isCollapsed);
+});
+
+function renderFavoritesList(){
+  favoritesCountEl.textContent = `저장된 디스크립션 ${favorites.length}개`;
+
+  // 즐겨찾기가 하나도 없으면 검색/필터 바 자체를 숨기고 빈 상태 안내만 표시
+  if(favorites.length === 0){
+    favoritesToolbar.hidden = true;
+    favoritesList.innerHTML = `
+      <div class="favorites-empty">
+        <span class="star-ghost">☆</span>
+        마음에 드는 디스크립션의<br>별표를 누르면 여기에 모아둘 수 있어요
+      </div>
+    `;
+    return;
+  }
+
+  favoritesToolbar.hidden = false;
+  renderFavoriteBrandChips();
+
+  // 필터 적용: 선택된 브랜드 칩이 있으면 그 브랜드만, 검색어가 있으면 텍스트에 포함된 것만
+  const filtered = favorites.filter(fav => {
+    const matchesBrand = favoritesActiveBrandIds.size === 0 || favoritesActiveBrandIds.has(fav.brandId);
+    const matchesSearch = !favoritesSearchQuery || fav.copyText.toLowerCase().includes(favoritesSearchQuery);
+    return matchesBrand && matchesSearch;
+  });
+
+  if(filtered.length === 0){
+    favoritesList.innerHTML = `
+      <div class="favorites-no-match">검색·필터 조건에 맞는 디스크립션이 없어요</div>
+    `;
+    return;
+  }
+
+  // 최신순(나중에 즐겨찾기한 것이 위로)으로 표시
+  const sorted = [...filtered].reverse();
+  favoritesList.innerHTML = "";
+
+  sorted.forEach(fav => {
+    const card = document.createElement("div");
+    card.className = "favorite-card";
+    card.innerHTML = `
+      <div class="favorite-card-head">
+        <span class="favorite-card-brand">${escapeHtml(fav.brandName)}</span>
+        <button class="favorite-card-remove" title="즐겨찾기에서 제거">×</button>
+      </div>
+      <div class="favorite-card-text">${escapeHtml(fav.copyText)}</div>
+      <div class="favorite-card-actions">
+        <button data-action="preview">미리보기에 적용</button>
+        <button data-action="copy">복사</button>
+      </div>
+    `;
+
+    card.querySelector(".favorite-card-remove").addEventListener("click", () => {
+      removeFavorite(fav.id);
+    });
+
+    card.querySelector('[data-action="preview"]').addEventListener("click", () => {
+      // 즐겨찾기에 저장된 이미지로 미리보기 컨텍스트를 되돌린 뒤, 해당 디스크립션을 띄운다.
+      if(fav.imageUrl) currentPreviewImageUrl = fav.imageUrl;
+      currentPreviewBrandName = fav.brandName;
+      updateMetaMockPreview(fav.copyText);
+    });
+
+    card.querySelector('[data-action="copy"]').addEventListener("click", (e) => {
+      navigator.clipboard.writeText(fav.copyText).then(() => {
+        const btn = e.currentTarget;
+        const original = btn.textContent;
+        btn.textContent = "복사됨 ✓";
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      });
+    });
+
+    favoritesList.appendChild(card);
+  });
+}
+
+// 현재 즐겨찾기 안에 실제로 존재하는 브랜드만 칩으로 보여준다.
+// "전체" 칩 + 브랜드별 칩으로 구성되며, 브랜드 칩은 토글(다중 선택) 방식이다.
+function renderFavoriteBrandChips(){
+  const brandIdsInUse = [...new Set(favorites.map(f => f.brandId))];
+
+  // 칩이 1개 이하(브랜드가 하나뿐)면 필터링 의미가 없으므로 칩 자체를 숨긴다.
+  if(brandIdsInUse.length <= 1){
+    favoritesBrandChips.innerHTML = "";
+    return;
+  }
+
+  const allChip = `<button class="fav-chip ${favoritesActiveBrandIds.size === 0 ? "active" : ""}" data-chip="all">전체</button>`;
+
+  const brandChips = brandIdsInUse.map(brandId => {
+    const fav = favorites.find(f => f.brandId === brandId);
+    const color = getBrandColor(brandId);
+    const isActive = favoritesActiveBrandIds.has(brandId);
+    const style = isActive ? `style="--qr-color:${color.bg};--qr-text:${color.text}"` : "";
+    return `<button class="fav-chip ${isActive ? "active" : ""}" data-chip="${brandId}" ${style}>${escapeHtml(fav.brandName)}</button>`;
+  }).join("");
+
+  favoritesBrandChips.innerHTML = allChip + brandChips;
+
+  favoritesBrandChips.querySelectorAll(".fav-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const chipBrandId = chip.dataset.chip;
+      if(chipBrandId === "all"){
+        favoritesActiveBrandIds.clear();
+      }else if(favoritesActiveBrandIds.has(chipBrandId)){
+        favoritesActiveBrandIds.delete(chipBrandId);
+      }else{
+        favoritesActiveBrandIds.add(chipBrandId);
+      }
+      renderFavoritesList();
+    });
+  });
+}
+
+function renderErrorBubble(message, retryFile, retryBrandId){
+  const row = document.createElement("div");
+  row.className = "msg-row bot";
+  row.innerHTML = `
+    <div class="avatar">${botIconSVG()}</div>
+    <div class="error-bubble">
+      ⚠️ 디스크립션 생성에 실패했어요.<br>
+      <span style="opacity:0.85">${message}</span>
+      ${retryFile ? `<button class="retry-btn">다시 시도</button>` : ""}
+    </div>
+  `;
+  chatBody.appendChild(row);
+  scrollToBottom();
+
+  if(retryFile){
+    const retryBtn = row.querySelector(".retry-btn");
+    retryBtn.addEventListener("click", async () => {
+      if(isProcessing) return;
+      retryBtn.disabled = true;
+      retryBtn.textContent = "재시도 중...";
+      // 처음 업로드했던 그 file 객체를 그대로 재사용 — 다시 업로드받지 않는다.
+      await runLocked(retryFile, retryBrandId);
+    });
+  }
+}
+
+/* ---------- 6. 초기화 ---------- */
+function resetChat(){
+  chatBody.innerHTML = "";
+  selectedBrandId = null;
+  selectedBrandName = null;
+  isProcessing = false;
+  dropzone.classList.add("disabled");
+  dropzoneMain.textContent = "먼저 광고주 브랜드를 선택해 주세요";
+  dropzoneSub.textContent = "이미지를 드래그하거나 탭하여 업로드";
+
+  // 사이드 패널(메타 미리보기 + 즐겨찾기)도 처음 상태로 되돌린다.
+  appLayout.classList.remove("has-panel");
+  currentPreviewImageUrl = null;
+  currentPreviewBrandName = null;
+  currentPreviewCopy = null;
+  metaMockMount.innerHTML = `<div class="meta-mock-empty-state">디스크립션이 생성되면<br>여기에 미리보기가 표시됩니다</div>`;
+  favorites = [];
+  favoritesSearchQuery = "";
+  favoritesActiveBrandIds.clear();
+  favoritesSearchInput.value = "";
+  renderFavoritesList();
+
+  // 즐겨찾기 접힘 상태 및 미리보기 확장 상태도 초기 기본값(접힘)으로 되돌린다
+  const favoritesSectionEl = document.querySelector(".favorites-section");
+  const previewSectionEl = document.querySelector(".preview-section");
+  if(favoritesSectionEl) favoritesSectionEl.classList.add("collapsed");
+  if(previewSectionEl) previewSectionEl.classList.add("expanded");
+  favoritesToggleBtn.setAttribute("aria-expanded", "false");
+
+  initChat();
+}
+
+resetBtn.addEventListener("click", resetChat);
+
+/* ---------- 부팅 ---------- */
+setupDropzone();
+initChat();
+</script>
+
+</body>
+</html>
